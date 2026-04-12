@@ -4,21 +4,19 @@ import { NextRequest, NextResponse } from "next/server";
 import 'dotenv/config'
 
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
-
-
-
-
-
-
-
 
 export async function POST(req:Request){
 
     try{
+        const supabaseUrl = process.env.SUPABASE_URL
+        const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY
+
+        if (!supabaseUrl || !supabaseServiceKey) {
+            return NextResponse.json({ error: "Supabase is not configured." }, { status: 500 });
+        }
+
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
         const formData = await req.formData();
         const file = await formData.get("adImage") as File
 

@@ -7,7 +7,7 @@ export async function analyzeAd(base64:string,mimeType:string):Promise<AdAnalysi
 
 
 
-    const response = await callClaudeVision(base64,mimeType,`Analyze this ad creative and extract the following.
+    const response = await callClaudeVision<AdAnalysis>(base64,mimeType,`Analyze this ad creative and extract the following.
     Return ONLY valid JSON, no explanation, no markdown:
     {
       "headline": "main headline or hook in the ad",
@@ -18,13 +18,13 @@ export async function analyzeAd(base64:string,mimeType:string):Promise<AdAnalysi
       "differentiator": "what makes this offer unique"
     }
   `)
-    return JSON.parse(response) as AdAnalysis
+    return response
     
 }
 
 export async function analyzePage(markdown:string): Promise<PageAnalysis> {
 
-    const response = await callClaude(`
+    const response = await callClaude<PageAnalysis>(`
     Analyze this landing page content and extract key elements.
     Use EXACT text from the page for headline, subheadline, and cta fields.
     
@@ -45,14 +45,14 @@ export async function analyzePage(markdown:string): Promise<PageAnalysis> {
 
 
 
-    return JSON.parse(response) as PageAnalysis
+    return response
     
 }
 
 
 export async function gapAnalyze(adAnalysis:AdAnalysis,pageAnalysis:PageAnalysis):Promise<GapAnalysis> {
 
-    const response = await callClaude(`
+    const response = await callClaude<GapAnalysis>(`
     You are a CRO (Conversion Rate Optimization) expert.
     
     AD CREATIVE:
@@ -83,7 +83,7 @@ export async function gapAnalyze(adAnalysis:AdAnalysis,pageAnalysis:PageAnalysis
 
 
 
-    return JSON.parse(response) as GapAnalysis
+    return response
     
 }
 
@@ -94,7 +94,7 @@ export async function reWritePage(adAnalysis: AdAnalysis, pageAnalysis: PageAnal
     const highAndMediumGaps = gaps.filter(g => g.severity !== 'low' )
 
 
-      return callClaude(`
+      return callClaude<RewriteResult>(`
     You are an expert conversion copywriter.
     Rewrite ONLY the elements listed in the gaps below.
     Do NOT invent changes for elements not in the gaps list.
