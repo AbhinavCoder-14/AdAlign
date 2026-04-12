@@ -9,12 +9,21 @@ import {
   UnchangedSection,
   TweakInput,
   ViewToggle,
+  ProgressScreen,
 } from '@/components'
 import type { AnalyzeResponse } from '@/types'
 
 const SESSION_KEY = 'adalign_result'
 
 type ViewType = 'original' | 'personalized'
+type ProgressStep = 'analyzing_ad' | 'scraping' | 'analyzing_gaps' | 'rewriting'
+
+const STEPS = [
+  { key: 'analyzing_ad', label: 'Ad creative analyzed' },
+  { key: 'scraping', label: 'Reading landing page...' },
+  { key: 'analyzing_gaps', label: 'Finding message gaps' },
+  { key: 'rewriting', label: 'Personalizing content' },
+] as const
 
 export default function ResultPage() {
   const router = useRouter()
@@ -86,6 +95,16 @@ export default function ResultPage() {
       <div className="flex h-screen items-center justify-center bg-[#0a0a0a]">
         <p className="text-gray-400">Loading...</p>
       </div>
+    )
+  }
+
+  if (tweaking) {
+    return (
+      <ProgressScreen
+        currentStep={'rewriting' as ProgressStep}
+        completedSteps={['analyzing_ad', 'scraping', 'analyzing_gaps']}
+        steps={STEPS}
+      />
     )
   }
 
