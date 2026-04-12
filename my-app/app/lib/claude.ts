@@ -5,6 +5,30 @@ const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const JSON_RETRY_SUFFIX = '\n\nReturn only valid JSON. No markdown, no explanation.'
 
+// Rate limiting queue to prevent hitting TPM limits
+let requestQueue: Array<() => Promise<any>> = []
+let isProcessing = false
+const MIN_REQUEST_INTERVAL = 1500 // 1.5 seconds between requests
+
+async function processQueue() {
+  if (isProcessing || requestQueue.length === 0) return
+  
+  isProcessing = true
+  while (requestQueue.length > 0) {
+    const request = requestQueue.shift()
+    if (request) {
+      try {
+        await request()
+      } catch (error) {
+        console.error('Queue request error:', error)
+      }
+      // Wait between requests to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, MIN_REQUEST_INTERVAL))
+    }
+  }
+  isProcessing = false
+}
+
 function getApiKey() {
   return process.env.GROQ_API_KEY || ''
 }
@@ -46,7 +70,15 @@ async function requestGroq(body: Record<string, unknown>) {
 
   if (!response.ok) {
     const errorBody = await response.text()
-    throw new Error(`Groq request failed (${response.status}): ${errorBody.slice(0, 240)}`)
+    const error = new Error(`Groq request failed (${response.status}): ${errorBody.slice(0, 240)}`)
+    
+    // If rate limited, add exponential backoff
+    if (response.status === 429) {
+      console.warn('Rate limit hit, waiting before retry...')
+      await new Promise(resolve => setTimeout(resolve, 5000))
+    }
+    
+    throw error
   }
 
   return response.json()
@@ -92,7 +124,7 @@ export async function callClaude<T = unknown>(prompt: string, system?: string): 
     model: TEXT_MODEL,
     messages,
     temperature: 0,
-    max_tokens: 2000,
+    max_tokens: 1200,
     response_format: { type: 'json_object' },
   })
 }
@@ -119,7 +151,7 @@ export async function callClaudeVision<T = unknown>(
       },
     ],
     temperature: 0,
-    max_tokens: 2000,
+    max_tokens: 1200,
     response_format: { type: 'json_object' },
   })
 }

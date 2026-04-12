@@ -31,30 +31,46 @@ export async function POST(req: Request) {
 
     // Call Agent 4 (rewritePage) with the instruction
     const highAndMediumGaps = gaps.filter(g => g.severity !== 'low')
+    
+    // Compress data to reduce token usage
+    const compressedAdAnalysis = {
+      tone: adAnalysis.tone,
+      offer: adAnalysis.offer,
+      value_prop: (adAnalysis as any).value_prop,
+      cta: (adAnalysis as any).cta,
+    }
+    
+    const gapElementNames = new Set(highAndMediumGaps.map(g => g.element))
+    const filteredPageAnalysis = Object.fromEntries(
+      Object.entries(pageAnalysis).filter(([key]) => gapElementNames.has(key))
+    )
+    
+    const compressedGaps = highAndMediumGaps.map(g => ({
+      element: g.element,
+      severity: g.severity,
+      reason: g.reason,
+    })) 
 
     const rewriteResult = await callClaude<RewriteResult>(`
-    You are an expert conversion copywriter.
     Rewrite ONLY the elements listed in the gaps below.
     Do NOT invent changes for elements not in the gaps list.
     
-    Additional user instruction: ${instruction}
-    Prioritize this instruction above all else.
+    User instruction: ${instruction}
     
-    AD:
-    ${JSON.stringify(adAnalysis, null, 2)}
+    Ad tone: ${compressedAdAnalysis.tone}
+    Core offer: ${compressedAdAnalysis.offer}
     
-    CURRENT PAGE ELEMENTS (use EXACT text as "original"):
-    ${JSON.stringify(pageAnalysis, null, 2)}
+    Page elements to rewrite:
+    ${JSON.stringify(filteredPageAnalysis)}
     
-    GAPS TO FIX (only these):
-    ${JSON.stringify(highAndMediumGaps, null, 2)}
+    Gaps (only rewrite these):
+    ${JSON.stringify(compressedGaps)}
     
     Rules:
-    - "original" must be EXACT current text from the page
-    - Match ad tone: ${adAnalysis.tone}
-    - Reflect the core offer: ${adAnalysis.offer}
-    - Keep rewrites similar in length to originals
-    - Only fix elements with identified gaps
+    - Match the ad tone exactly
+    - Keep rewrites similar in length
+    - Only fix the identified gaps
+    - Return exact original text in "original" field
     
     Return ONLY valid JSON:
     {
@@ -62,11 +78,11 @@ export async function POST(req: Request) {
         {
           "element": "headline",
           "original": "exact current text",
-          "rewritten": "new personalized text",
-          "reason": "specific reason tied to the gap"
+          "rewritten": "new text",
+          "reason": "why changed"
         }
       ],
-      "unchanged": ["element name - reason not changed"]
+      "unchanged": ["element - reason"]
     }
   `)
 
