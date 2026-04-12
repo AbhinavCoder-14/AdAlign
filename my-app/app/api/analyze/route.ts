@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
   const formData = await request.formData()
   const imageFile = formData.get('image') as File | null
   const url = String(formData.get('url') || '')
+  const USER_INSTRUCTION = String(formData.get('user_Ins') || "")
 
   if (!imageFile || !url) {
     return NextResponse.json({ error: 'Image and URL are required.' }, { status: 400 })
@@ -79,7 +80,7 @@ export async function POST(request: NextRequest) {
         const gapAnalysis = await gapAnalyze(adAnalysis, pageAnalysis)
 
         sendStatus('rewriting', 'Personalizing content...')
-        const rewriteResult = await reWritePage(adAnalysis, pageAnalysis, gapAnalysis.gaps)
+        const rewriteResult = await reWritePage(adAnalysis, pageAnalysis, gapAnalysis.gaps,USER_INSTRUCTION)
 
         let modifiedHtml = rawHtml
         let warning: string | undefined

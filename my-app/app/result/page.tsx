@@ -10,7 +10,7 @@ import {
   TweakInput,
   ViewToggle,
 } from '@/components'
-import type { AnalyzeResponse } from '@/types'
+import type { AnalyzeResponse, ConversionScore } from '@/types'
 
 const SESSION_KEY = 'adalign_result'
 
@@ -19,6 +19,7 @@ type ViewType = 'original' | 'personalized'
 export default function ResultPage() {
   const router = useRouter()
   const [data, setData] = useState<AnalyzeResponse | null>(null)
+  const [conversionScore, setConversionScore] = useState<ConversionScore | undefined>()
   const [activeView, setActiveView] = useState<ViewType>('personalized')
   const [currentModifiedHtml, setCurrentModifiedHtml] = useState('')
   const [currentChanges, setCurrentChanges] = useState<any[]>([])
@@ -38,6 +39,7 @@ export default function ResultPage() {
     try {
       const parsed = JSON.parse(raw) as AnalyzeResponse
       setData(parsed)
+      setConversionScore(parsed.gapAnalysis.conversionScore)
       setCurrentModifiedHtml(parsed.modifiedHtml)
       setCurrentChanges(parsed.rewriteResult.changes)
     } catch {
@@ -107,7 +109,7 @@ export default function ResultPage() {
 
         <div className="space-y-8 px-6 py-8">
           {/* Match Score */}
-          <MatchScore score={data.gapAnalysis.matchScore} summary={data.gapAnalysis.summary} />
+          <MatchScore score={data.gapAnalysis.matchScore} summary={data.gapAnalysis.summary} conversionScore={conversionScore} />
 
           {/* Ad Snapshot */}
           <AdSnapshot analysis={data.adAnalysis} />

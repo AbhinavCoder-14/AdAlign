@@ -1,10 +1,15 @@
 export type AdAnalysis = {
   headline: string
   cta: string
-  tone: string
   audience: string
   offer: string
   differentiator: string
+  urgencySignals: string
+  specificClaim: string
+  emotionalTrigger: string
+  impliedPain: string
+  trustSignals: string
+  tone: string
 }
 
 export type PageAnalysis = {
@@ -14,6 +19,15 @@ export type PageAnalysis = {
   valueProp: string
   audience: string
   tone: string
+  whatTheyDo: string
+  keyFeatures: string[]
+  painPointsAddressed: string[]
+  keyBenefits: string[]
+  uniqueValue: string
+  trustSignals: string
+  targetCustomerProfile: string
+  pricingModel: string
+  callouts: string[]
 }
 
 export type Gap = {
@@ -24,10 +38,19 @@ export type Gap = {
   reason: string
 }
 
+export type ConversionScore = {
+  messageMatch: number
+  specificity: number
+  clarity: number
+  trustAlignment: number
+  urgency: number
+}
+
 export type GapAnalysis = {
   matchScore: number
   summary: string
   gaps: Gap[]
+  conversionScore: ConversionScore
 }
 
 export type Change = {
@@ -50,4 +73,5 @@ export type AnalyzeResponse = {
   originalHtml: string
   modifiedHtml: string
   warning?: string
+
 }
