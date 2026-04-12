@@ -1,157 +1,66 @@
-# AdAlign
+# AdAlign App
 
-AdAlign is an AI-assisted message matching system that compares an ad creative with a landing page, finds conversion gaps, and generates safe personalized rewrites.
+AI-powered ad-to-landing-page message matching and rewrite system.
 
-## What It Does
+## Overview
 
-- Accepts an ad image and landing page URL.
-- Analyzes ad messaging (headline, offer, audience, tone, CTA).
-- Scrapes and analyzes landing page messaging.
-- Calculates message-match score and identifies high-impact gaps.
-- Rewrites only relevant page elements.
-- Injects changes into HTML with a safety guard.
-- Supports manual tweak-and-regenerate after the first result.
+This app analyzes an ad creative and a landing page, detects messaging gaps, and generates safe personalized rewrites to improve conversion alignment.
 
 ## Architecture Diagram
 
-Editable source: [architecture.excalidraw](architecture.excalidraw)
+![System Architecture](./my-app/public/archi.png)
 
-```mermaid
-flowchart LR
-    U[User: ad image + landing page URL]
-    FE[Next.js Frontend]
-    A[/POST /api/analyze/]
-    S[Scraper\nr.jina.ai text + raw HTML]
+## Product Screens
 
-    AG1[Agent 1: analyzeAd\nExtract ad intent]
-    AG2[Agent 2: analyzePage\nExtract page messaging]
-    AG3[Agent 3: gapAnalyze\nScore + gaps]
-    AG4[Agent 4: rewritePage\nTargeted rewrites]
+![Home Screen](./my-app/public/home.png)
 
-    GQ[Groq Vision\nmeta-llama/llama-4-scout-17b-16e-instruct]
-    GT[Groq Text\ngroq/compound-mini]
+![Personalized Result](./my-app/public/personalized.png)
 
-    INJ[Injection + Safety Guard\nreplace text, keep structure]
-    RES[Result View\noriginal vs personalized HTML]
+![Original Result](./my-app/public/orignal.png)
 
-    RW[/POST /api/rewrite/\nmanual tweak flow]
-
-    U --> FE --> A
-    A --> AG1 --> GQ
-    A --> S --> AG2
-    AG2 --> GT
-    AG1 --> AG3 --> GT
-    AG3 --> AG4 --> GT
-    AG4 --> INJ --> RES
-    FE -. tweak instruction .-> RW --> INJ
-    A -. SSE status updates .-> FE
-
-```
-
-## Core Flow
-
-1. Frontend sends image + URL to /api/analyze.
-2. Backend streams progress status via SSE.
-3. Pipeline runs: analyzeAd -> scraper + analyzePage -> gapAnalyze -> rewritePage.
-4. Rewrites are injected into raw HTML.
-5. Safety check validates structure drift before returning output.
-6. Result page allows additional user tweaks through /api/rewrite.
-
-## Safety and Reliability
-
-- Constrained rewrites: only high/medium-severity gap elements are rewritten.
-- JSON-only model responses with retry on malformed outputs.
-- 429 handling and retry delay for free-tier rate limits.
-- HTML safety guard preserves original HTML if structural drift is too high.
-- Streaming status updates keep UI responsive during long operations.
-
-## Tech Stack
-
-- Next.js (App Router)
-- TypeScript
-- Tailwind CSS
-- Groq API (vision + text models)
-- Supabase (optional upload/storage path)
-
-## Project Structure
-
-```text
-AdAlign/
-  architecture.excalidraw
-  my-app/
-    app/
-      api/
-        analyze/route.ts
-        rewrite/route.ts
-        upload/route.ts
-      lib/
-        agents/index.ts
-        claude.ts
-        scraper.ts
-        inject.ts
-      page.tsx
-      result/page.tsx
-    components/
-    types/index.ts
-```
-
-## API Endpoints
+## Key Endpoints
 
 - POST /api/analyze
-  - Input: multipart form-data (image, url)
-  - Output: SSE stream of status events and final result payload
+  - Accepts image + URL.
+  - Streams status updates using SSE.
+  - Returns analyses, gaps, rewrite suggestions, and modified HTML.
 
 - POST /api/rewrite
-  - Input: adAnalysis, pageAnalysis, gaps, instruction, rawHtml
-  - Output: rewrite result + modifiedHtml (or safe fallback)
+  - Accepts user tweak instruction and previous analysis context.
+  - Produces targeted rewrite updates.
+  - Falls back to original HTML if injection is unsafe.
 
 - POST /api/upload
-  - Input: adImage
-  - Output: queued status + fileKey (Supabase storage)
+  - Optional Supabase-backed upload path.
 
 ## Environment Variables
 
-Create my-app/.env.local:
+Create .env.local:
 
 ```bash
 GROQ_API_KEY=your_groq_api_key
 
-# Optional (needed only for upload/storage route)
-SUPABASE_URL=your_supabase_project_url
-SUPABASE_SERVICE_KEY=your_supabase_service_role_key
+# Optional for upload route
+SUPABASE_URL=your_supabase_url
+SUPABASE_SERVICE_KEY=your_supabase_service_key
 
-# Optional client/server helpers
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+# Optional for supabase helpers
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-## Local Setup
-
-1. Install dependencies:
+## Run Locally
 
 ```bash
-cd my-app
 pnpm install
-```
-
-2. Start development server:
-
-```bash
 pnpm dev
 ```
 
-3. Open:
+Open http://localhost:3000.
 
-```text
-http://localhost:3000
-```
+## Reliability Notes
 
-## Deployment Notes (Vercel)
-
-- Set Root Directory to my-app.
-- Keep package.json and pnpm-lock.yaml in sync before pushing.
-- If CI reports frozen-lockfile mismatch, regenerate lockfile locally and commit both files.
-
-## Assignment Notes
-
-This project is fully functional on free-tier APIs. Under higher load, rate limiting can occur; the system includes retries and queue spacing to handle this gracefully.
+- JSON-only structured outputs with parse retry.
+- Retry delay for rate-limited LLM responses.
+- HTML safety guard to avoid breaking page structure.
+- Progress feedback for both initial run and tweak regeneration.
