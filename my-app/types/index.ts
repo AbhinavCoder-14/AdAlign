@@ -27,6 +27,13 @@ export type Gap = {
 export type GapAnalysis = {
   matchScore: number
   summary: string
+  conversionScore?: {
+    messageMatch: number
+    specificity: number
+    clarity: number
+    trustAlignment: number
+    urgency: number
+  }
   gaps: Gap[]
 }
 

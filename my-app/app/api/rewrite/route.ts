@@ -1,4 +1,4 @@
-import { callClaude } from '@/app/lib/claude'
+import { reWritePage } from '@/app/lib/agents'
 import { injectChanges, isInjectionSafe } from '@/app/lib/inject'
 import type { AdAnalysis, PageAnalysis, Gap, RewriteResult } from '@/types'
 
@@ -29,62 +29,7 @@ export async function POST(req: Request) {
       )
     }
 
-    // Call Agent 4 (rewritePage) with the instruction
-    const highAndMediumGaps = gaps.filter(g => g.severity !== 'low')
-    
-    // Compress data to reduce token usage
-    const compressedAdAnalysis = {
-      tone: adAnalysis.tone,
-      offer: adAnalysis.offer,
-      value_prop: (adAnalysis as any).value_prop,
-      cta: (adAnalysis as any).cta,
-    }
-    
-    const gapElementNames = new Set(highAndMediumGaps.map(g => g.element))
-    const filteredPageAnalysis = Object.fromEntries(
-      Object.entries(pageAnalysis).filter(([key]) => gapElementNames.has(key))
-    )
-    
-    const compressedGaps = highAndMediumGaps.map(g => ({
-      element: g.element,
-      severity: g.severity,
-      reason: g.reason,
-    })) 
-
-    const rewriteResult = await callClaude<RewriteResult>(`
-    Rewrite ONLY the elements listed in the gaps below.
-    Do NOT invent changes for elements not in the gaps list.
-    
-    User instruction: ${instruction}
-    
-    Ad tone: ${compressedAdAnalysis.tone}
-    Core offer: ${compressedAdAnalysis.offer}
-    
-    Page elements to rewrite:
-    ${JSON.stringify(filteredPageAnalysis)}
-    
-    Gaps (only rewrite these):
-    ${JSON.stringify(compressedGaps)}
-    
-    Rules:
-    - Match the ad tone exactly
-    - Keep rewrites similar in length
-    - Only fix the identified gaps
-    - Return exact original text in "original" field
-    
-    Return ONLY valid JSON:
-    {
-      "changes": [
-        {
-          "element": "headline",
-          "original": "exact current text",
-          "rewritten": "new text",
-          "reason": "why changed"
-        }
-      ],
-      "unchanged": ["element - reason"]
-    }
-  `)
+    const rewriteResult: RewriteResult = await reWritePage(adAnalysis, pageAnalysis, gaps, instruction)
 
     // Inject changes into HTML
     const modifiedHtml = injectChanges(rawHtml, rewriteResult.changes)
