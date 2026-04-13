@@ -1,21 +1,39 @@
 import { Change } from "@/types"
 
+function normalizeText(value: unknown): string | null {
+    if (typeof value === 'string') return value
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+
+    if (Array.isArray(value)) {
+        const parts = value
+            .filter(item => typeof item === 'string')
+            .map(item => (item as string).trim())
+            .filter(Boolean)
+
+        return parts.length > 0 ? parts.join(' ') : null
+    }
+
+    return null
+}
 
 export function injectChanges(rawHTML:string,changes:Change[]): string {
 
     let modified = rawHTML
 
     for (const change of changes){
-        if(!change.original || !change.rewritten){
+        const original = normalizeText((change as unknown as { original?: unknown }).original)
+        const rewritten = normalizeText((change as unknown as { rewritten?: unknown }).rewritten)
+
+        if(!original || !rewritten){
             continue
         }
 
-        const escaped = change.original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const escaped = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
         const regex = new RegExp(escaped,"g")
 
 
         if (regex.test(modified)) {
-            modified = modified.replace(regex, change.rewritten)
+            modified = modified.replace(regex, rewritten)
         }
 
     }
