@@ -1,29 +1,66 @@
 import 'dotenv/config'
 
 const TEXT_MODEL = 'groq/compound-mini'
+const GEMINI_MODEL = ''
 const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const JSON_RETRY_SUFFIX = '\n\nReturn only valid JSON. No markdown, no explanation.'
 
-// Rate limiting queue to prevent hitting TPM limits
-let requestQueue: Array<() => Promise<any>> = []
+// Keep below provider limits (default 28 RPM to stay under a 30 RPM ceiling).
+const GROQ_RPM_LIMIT = Number(process.env.GROQ_RPM_LIMIT || 28)
+const MIN_REQUEST_INTERVAL = Math.ceil(60000 / Math.max(GROQ_RPM_LIMIT, 1))
+const MAX_HTTP_RETRIES = 3
+const MAX_JSON_REPAIR_RETRIES = 1
+
+type QueueTask = {
+  run: () => Promise<unknown>
+  resolve: (value: unknown) => void
+  reject: (reason?: unknown) => void
+}
+
+const requestQueue: QueueTask[] = []
 let isProcessing = false
-const MIN_REQUEST_INTERVAL = 1500 // 1.5 seconds between requests
+let lastRequestAt = 0
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function waitForRateWindow() {
+  const elapsed = Date.now() - lastRequestAt
+  const waitMs = MIN_REQUEST_INTERVAL - elapsed
+
+  if (waitMs > 0) {
+    await sleep(waitMs)
+  }
+}
+
+function enqueueGroqRequest<T>(run: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    requestQueue.push({
+      run,
+      resolve: value => resolve(value as T),
+      reject,
+    })
+    void processQueue()
+  })
+}
 
 async function processQueue() {
   if (isProcessing || requestQueue.length === 0) return
-  
+
   isProcessing = true
   while (requestQueue.length > 0) {
-    const request = requestQueue.shift()
-    if (request) {
+    const task = requestQueue.shift()
+    if (task) {
       try {
-        await request()
+        await waitForRateWindow()
+        const result = await task.run()
+        lastRequestAt = Date.now()
+        task.resolve(result)
       } catch (error) {
-        console.error('Queue request error:', error)
+        task.reject(error)
       }
-      // Wait between requests to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, MIN_REQUEST_INTERVAL))
     }
   }
   isProcessing = false
@@ -42,6 +79,22 @@ function parseJson<T>(raw: string): T {
   return JSON.parse(clean) as T
 }
 
+function parseJsonRobust<T>(raw: string): T {
+  try {
+    return parseJson<T>(raw)
+  } catch {
+    const clean = extractJsonText(raw)
+    const start = clean.indexOf('{')
+    const end = clean.lastIndexOf('}')
+
+    if (start !== -1 && end > start) {
+      return JSON.parse(clean.slice(start, end + 1)) as T
+    }
+
+    throw new Error('Unable to parse model JSON output.')
+  }
+}
+
 function readCandidateText(payload: any): string {
   const text = payload?.choices?.[0]?.message?.content
 
@@ -53,63 +106,76 @@ function readCandidateText(payload: any): string {
 }
 
 async function requestGroq(body: Record<string, unknown>) {
+  return enqueueGroqRequest(async () => {
+    let attempt = 0
+
+    while (true) {
+      const response = await fetch(GROQ_API_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${getApiKey()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      })
+
+      if (response.ok) {
+        return response.json()
+      }
+
+      const errorBody = await response.text()
+      const isRetryable = response.status === 429 || response.status >= 500
+
+      if (!isRetryable || attempt >= MAX_HTTP_RETRIES) {
+        throw new Error(`Groq request failed (${response.status}): ${errorBody.slice(0, 240)}`)
+      }
+
+      const backoff = Math.min(12000, 1200 * 2 ** attempt)
+      const jitter = Math.floor(Math.random() * 300)
+      await sleep(backoff + jitter)
+      attempt += 1
+    }
+  })
+}
+
+async function requestAndParse<T>(body: Record<string, unknown>): Promise<T> {
   const apiKey = getApiKey()
 
   if (!apiKey) {
     throw new Error('Missing GROQ_API_KEY.')
   }
-
-  const response = await fetch(GROQ_API_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  })
-
-  if (!response.ok) {
-    const errorBody = await response.text()
-    const error = new Error(`Groq request failed (${response.status}): ${errorBody.slice(0, 240)}`)
-    
-    // If rate limited, add exponential backoff
-    if (response.status === 429) {
-      console.warn('Rate limit hit, waiting before retry...')
-      await new Promise(resolve => setTimeout(resolve, 5000))
-    }
-    
-    throw error
-  }
-
-  return response.json()
-}
-
-async function requestAndParse<T>(body: Record<string, unknown>): Promise<T> {
   const first = await requestGroq(body)
   const firstText = readCandidateText(first)
 
   try {
-    return parseJson<T>(firstText)
+    return parseJsonRobust<T>(firstText)
   } catch {
-    const retry = await requestGroq({
-      ...body,
-      messages: [
-        ...(body.messages as Array<Record<string, unknown>>),
-        {
-          role: 'user',
-          content: JSON_RETRY_SUFFIX,
-        },
-      ],
-    })
-    const retryText = readCandidateText(retry)
+    let repairAttempt = 0
 
-    try {
-      return parseJson<T>(retryText)
-    } catch {
-      throw new Error(`Groq returned invalid JSON: ${extractJsonText(retryText).slice(0, 300)}`)
+    while (repairAttempt < MAX_JSON_REPAIR_RETRIES) {
+      const retry = await requestGroq({
+        ...body,
+        messages: [
+          ...(body.messages as Array<Record<string, unknown>>),
+          {
+            role: 'user',
+            content: JSON_RETRY_SUFFIX,
+          },
+        ],
+      })
+      const retryText = readCandidateText(retry)
+
+      try {
+        return parseJsonRobust<T>(retryText)
+      } catch {
+        repairAttempt += 1
+      }
     }
+
+    throw new Error(`Groq returned invalid JSON: ${extractJsonText(firstText).slice(0, 300)}`)
   }
 }
+
 
 export async function callClaude<T = unknown>(prompt: string, system?: string): Promise<T> {
   const messages: Array<Record<string, unknown>> = []
@@ -129,6 +195,8 @@ export async function callClaude<T = unknown>(prompt: string, system?: string): 
   })
 }
 
+
+// for vision
 export async function callClaudeVision<T = unknown>(
   base64: string,
   mimeType: string,
