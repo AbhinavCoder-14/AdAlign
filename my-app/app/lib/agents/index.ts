@@ -1,49 +1,61 @@
-import { callClaude, callClaudeVision, callGemini } from '../claude'
+import { callClaude, callClaudeVision, callGemini, callOpenRouter } from '../claude'
 import { AdAnalysis, PageAnalysis, GapAnalysis, RewriteResult } from '@/types'
+
+const PAGE_ANALYSIS_MODEL = process.env.OPENROUTER_PAGE_MODEL || 'deepseek/deepseek-r1'
 
 
 
 export async function analyzeAd(base64:string,mimeType:string):Promise<AdAnalysis> {
 
+    const response = await callClaudeVision<AdAnalysis>(base64,mimeType,`
+Analyze this ad creative and extract ONLY valid JSON.
 
-
-    const response = await callClaudeVision<AdAnalysis>(base64,mimeType,`Analyze this ad creative and extract the following.
-    Return ONLY valid JSON, no explanation, no markdown:
-    {
-      "headline": "main headline or hook in the ad",
-      "cta": "call to action text",
-      "tone": "urgent | friendly | professional | casual",
-      "audience": "who this ad is targeting",
-      "offer": "the core offer or promise",
-      "differentiator": "what makes this offer unique"
-    }
-  `)
+Return:
+{
+  "headline": "main headline or hook in the ad",
+  "cta": "call to action text",
+  "tone": "urgent | friendly | professional | casual",
+  "audience": "who this ad is targeting",
+  "offer": "core offer or promise",
+  "differentiator": "what makes this offer unique",
+  "urgencySignals": "time pressure or urgency words",
+  "specificClaim": "specific number, proof, or measurable claim",
+  "emotionalTrigger": "fear | aspiration | curiosity | relief | status",
+  "impliedPain": "the problem the ad assumes the user has",
+  "trustSignals": "logos, numbers, guarantees, proof, or credibility cues"
+}
+`)
     return response
-    
 }
 
 export async function analyzePage(markdown:string): Promise<PageAnalysis> {
 
-    const response = await callClaude<PageAnalysis>(`
-    Analyze this landing page content and extract key elements.
-    Use EXACT text from the page for headline, subheadline, and cta fields.
-    
-    Content:
-    ${markdown.slice(0, 8000)}
-    
-    Return ONLY valid JSON:
-    {
-      "headline": "exact hero headline text",
-      "subheadline": "exact subheadline text",
-      "cta": "exact CTA button text",
-      "valueProp": "main value proposition summarized",
-      "audience": "inferred target audience",
-      "tone": "urgent | friendly | professional | casual"
-    }
-  `)
+    const response = await callOpenRouter<PageAnalysis>(`
+Analyze this landing page comprehensively.
+Extract exact text for any headline and CTA you find.
 
+Content:
+${markdown.slice(0, 10000)}
 
-
+Return ONLY valid JSON with no explanation:
+{
+  "headline": "exact hero headline from page",
+  "subheadline": "exact subheadline/tagline text",
+  "cta": "exact primary CTA button text",
+  "valueProp": "core value proposition in 1 sentence",
+  "audience": "who this product is for",
+  "tone": "urgent | friendly | professional | casual",
+  "whatTheyDo": "clear explanation of what the company/product does (2-3 sentences)",
+  "keyFeatures": ["list of", "main features", "or capabilities"],
+  "painPointsAddressed": ["problem 1 it solves", "problem 2"],
+  "keyBenefits": ["benefit/outcome 1", "benefit/outcome 2", "transformation 3"],
+  "uniqueValue": "what makes them different from competitors",
+  "trustSignals": "logos, testimonials, stats, guarantees mentioned",
+  "targetCustomerProfile": "detailed description of ideal customer",
+  "pricingModel": "pricing structure if mentioned (free trial, subscription, one-time purchase, etc)",
+  "callouts": ["highlighted features", "important stats", "guarantees"]
+}
+`, undefined, PAGE_ANALYSIS_MODEL)
 
     return response
     

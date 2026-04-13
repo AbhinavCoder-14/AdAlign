@@ -5,6 +5,11 @@ export type AdAnalysis = {
   audience: string
   offer: string
   differentiator: string
+  urgencySignals?: string
+  specificClaim?: string
+  emotionalTrigger?: string
+  impliedPain?: string
+  trustSignals?: string
 }
 
 export type PageAnalysis = {
@@ -14,6 +19,15 @@ export type PageAnalysis = {
   valueProp: string
   audience: string
   tone: string
+  whatTheyDo?: string
+  keyFeatures?: string[]
+  painPointsAddressed?: string[]
+  keyBenefits?: string[]
+  uniqueValue?: string
+  trustSignals?: string
+  targetCustomerProfile?: string
+  pricingModel?: string
+  callouts?: string[]
 }
 
 export type Gap = {

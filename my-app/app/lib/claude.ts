@@ -5,6 +5,7 @@ const GEMINI_MODEL = 'gemini-2.5-flash-lite'
 const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models'
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const JSON_RETRY_SUFFIX = '\n\nReturn only valid JSON. No markdown, no explanation.'
 
 // Keep below provider limits (default 28 RPM to stay under a 30 RPM ceiling).
@@ -73,6 +74,10 @@ function getApiKey() {
 
 function getGeminiApiKey() {
   return process.env.GEMINI_API_KEY || ''
+}
+
+function getOpenRouterApiKey() {
+  return process.env.OPENROUTER_API_KEY || ''
 }
 
 function extractJsonText(raw: string) {
@@ -330,5 +335,107 @@ export async function callGemini<T = unknown>(prompt: string, system?: string): 
     }
 
     throw new Error(`Gemini returned invalid JSON: ${extractJsonText(firstText).slice(0, 300)}`)
+  }
+}
+
+function readOpenRouterCandidateText(payload: any): string {
+  const text = payload?.choices?.[0]?.message?.content
+
+  if (typeof text !== 'string' || !text.trim()) {
+    throw new Error('OpenRouter returned an empty response.')
+  }
+
+  return text
+}
+
+async function requestOpenRouter(body: Record<string, unknown>) {
+  const apiKey = getOpenRouterApiKey()
+
+  if (!apiKey) {
+    throw new Error('Missing OPENROUTER_API_KEY.')
+  }
+
+  let attempt = 0
+
+  while (true) {
+    const response = await fetch(OPENROUTER_API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': process.env.OPENROUTER_HTTP_REFERER || 'http://localhost:3000',
+        'X-Title': process.env.OPENROUTER_APP_NAME || 'AdAlign',
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (response.ok) {
+      return response.json()
+    }
+
+    const errorBody = await response.text()
+    const isRetryable = response.status === 429 || response.status >= 500
+
+    if (!isRetryable || attempt >= MAX_HTTP_RETRIES) {
+      throw new Error(`OpenRouter request failed (${response.status}): ${errorBody.slice(0, 240)}`)
+    }
+
+    const backoff = Math.min(12000, 1200 * 2 ** attempt)
+    const jitter = Math.floor(Math.random() * 300)
+    await sleep(backoff + jitter)
+    attempt += 1
+  }
+}
+
+export async function callOpenRouter<T = unknown>(
+  prompt: string,
+  system?: string,
+  model = process.env.OPENROUTER_MODEL || 'qwen/qwen3-235b-a22b',
+): Promise<T> {
+  const messages: Array<Record<string, unknown>> = []
+
+  if (system) {
+    messages.push({ role: 'system', content: system })
+  }
+
+  messages.push({ role: 'user', content: prompt })
+
+  const first = await requestOpenRouter({
+    model,
+    messages,
+    temperature: 0,
+    response_format: { type: 'json_object' },
+  })
+
+  const firstText = readOpenRouterCandidateText(first)
+
+  try {
+    return parseJsonRobust<T>(firstText)
+  } catch {
+    let repairAttempt = 0
+
+    while (repairAttempt < MAX_JSON_REPAIR_RETRIES) {
+      const retry = await requestOpenRouter({
+        model,
+        messages: [
+          ...messages,
+          {
+            role: 'user',
+            content: JSON_RETRY_SUFFIX,
+          },
+        ],
+        temperature: 0,
+        response_format: { type: 'json_object' },
+      })
+      const retryText = readOpenRouterCandidateText(retry)
+
+      try {
+        return parseJsonRobust<T>(retryText)
+      } catch {
+        repairAttempt += 1
+      }
+    }
+
+    throw new Error(`OpenRouter returned invalid JSON: ${extractJsonText(firstText).slice(0, 300)}`)
   }
 }
