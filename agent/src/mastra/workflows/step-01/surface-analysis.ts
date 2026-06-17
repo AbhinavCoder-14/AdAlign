@@ -1,8 +1,9 @@
 import { createStep } from "@mastra/core/workflows";
 import { z } from "zod";
-import { CampaignBriefSchema, PsychologicalAnalysisSchema, SemanticAnalysisSchema, SurfaceAnalysisSchema } from "./schema/ad-analysis";
-import { adAnalysisVisionAgent } from "../agents/adAnalyzer";
-import { SURFACE_SIGNALS_PROMPT } from "../../prompt/ad-analyst";
+import { CampaignBriefSchema, PsychologicalAnalysisSchema, SemanticAnalysisSchema, SurfaceAnalysisSchema } from "../schema/ad-analysis";
+import { adAnalysisVisionAgent } from "../../agents/adAnalyzer";
+import { SURFACE_SIGNALS_PROMPT } from "../../../prompt/ad-analyst";
+import { WorkflowStateSchema } from "../schema/workflow-state-Schema";
 
 
 
@@ -12,12 +13,7 @@ export const surfaceAnalysisStep  = createStep({
     inputSchema: z.object({
         imageUrl:z.string()
     }),
-    stateSchema:z.object({
-        surfaceAnalysis:SurfaceAnalysisSchema,
-        semanticAnalysis: SemanticAnalysisSchema,
-        psychologicalAnalysis: PsychologicalAnalysisSchema,
-        campaignBrief: CampaignBriefSchema,
-    }),
+    stateSchema:WorkflowStateSchema,
     outputSchema:CampaignBriefSchema,
     execute: async ({
         inputData,state,setState
