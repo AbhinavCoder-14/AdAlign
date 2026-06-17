@@ -11,12 +11,15 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@ai-sdk/react": "^3.0.207",
+    "@mastra/ai-sdk": "^1.4.5",
     "@mastra/core": "^1.42.0",
     "@mastra/duckdb": "^1.4.2",
     "@mastra/libsql": "^1.13.0",
     "@mastra/loggers": "^1.1.2",
     "@mastra/memory": "^1.20.3",
     "@mastra/observability": "^1.14.1",
+    "ai": "^6.0.205",
     "mastra": "^1.13.0",
     "zod": "^4.4.3"
   }
