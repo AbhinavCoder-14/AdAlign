@@ -1,43 +1,43 @@
+import { createWorkflow } from "@mastra/core/workflows";
+import {z} from "zod"
 
-import { Mastra } from '@mastra/core/mastra';
-import { PinoLogger } from '@mastra/loggers';
-import { LibSQLStore } from '@mastra/libsql';
-import { DuckDBStore } from "@mastra/duckdb";
-import { MastraCompositeStore } from '@mastra/core/storage';
-import { Observability, MastraStorageExporter, MastraPlatformExporter, SensitiveDataFilter } from '@mastra/observability';
-import { weatherWorkflow } from './workflows/weather-workflow';
-import { weatherAgent } from './agents/weather-agent';
+import fs from "fs"
 
 
-export const mastra = new Mastra({
-  workflows: { weatherWorkflow },
-  agents: { weatherAgent },
-  storage: new MastraCompositeStore({
-    id: 'composite-storage',
-    default: new LibSQLStore({
-      id: "mastra-storage",
-      url: "file:./mastra.db",
-    }),
-    domains: {
-      observability: await new DuckDBStore().getStore('observability'),
-    }
+import {
+  CampaignBriefSchema,
+  SemanticAnalysisSchema,
+} from "./workflows/schema/ad-analysis";
+import { surfaceAnalysisStep } from "./workflows/step-01/surface-analysis";
+import { SemanticAnalysisStep } from "./workflows/step-01/semantic-analysis";
+import { psychologicalAnalysisStep } from "./workflows/step-01/psychological-analysis";
+import { campaignBriefStep } from "./workflows/step-01/campaign-brief";
+
+export const adAnalysisWorkflow = createWorkflow({
+  id: "ad-analysis-workflow",
+
+  inputSchema: z.object({
+    image: z.any(),
   }),
-  logger: new PinoLogger({
-    name: 'Mastra',
-    level: 'info',
-  }),
-  observability: new Observability({
-    configs: {
-      default: {
-        serviceName: 'mastra',
-        exporters: [
-          new MastraStorageExporter(), // Persists observability events to Mastra Storage
-          new MastraPlatformExporter(), // Sends observability events to Mastra Platform (if MASTRA_PLATFORM_ACCESS_TOKEN is set)
-        ],
-        spanOutputProcessors: [
-          new SensitiveDataFilter(), // Redacts sensitive data like passwords, tokens, keys
-        ],
-      },
-    },
-  }),
+
+  outputSchema: CampaignBriefSchema,
+})
+  .then(surfaceAnalysisStep)
+  .then(SemanticAnalysisStep)
+  .then(psychologicalAnalysisStep)
+  .then(campaignBriefStep);
+
+
+
+
+const imageBuffer = fs.readFileSync("./agent/public/image.png")
+
+const run = await adAnalysisWorkflow.createRun();
+
+const result = await run.start({
+  inputData: {
+    image: imageBuffer,
+  },
 });
+
+console.log(result);
